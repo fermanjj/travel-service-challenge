@@ -1,10 +1,12 @@
 """
 Author: JJ Ferman (fermanjj@gmail.com)
 
-This is a few endpoints implemented in the
-Flask web framework to receive PNRs and
-determine price drops on similar or exact
-flights.
+Creates a price check endpoint that accepts a PNR
+and returns price drops.
+
+The endpoint will query the Java endpoints
+to gather the data and determine price drops
+and returns a list.
 
 """
 from flask import (
@@ -13,30 +15,74 @@ from flask import (
 from config import *
 from requests import get, HTTPError
 from urllib.parse import quote_plus
+import re
 
 
 app = Flask(__name__)
 app.secret_key = APP_SECRET
 
 
-@app.route('/pnrs/<string:pnr>')
-def pnrs(pnr):
+def parse_flight_text(data):
+    """Parses the text from the pnrs endpoint.
+
+    :param str data: The payload from the Java pnrs request
+    :return: A dict of the flight data parsed out.
+    """
+    # parse the ticket number using regex
+    ticket_number = re.search(
+        r'[1-9][0-9]*\. AS ([0-9]{13})', data).group(1)
+
+    # parse the flight segments using regex
+    segments = re.findall(r'[a-z]\.(.*)$', data)
+
+    # create an output dict
+    output = {'ticket_number': ticket_number, 'segments': []}
+
+    # iterate over the segments, parsing them
+    for segment in segments:
+        seg_dict = {}
+        # clean the segment to just have single spaces
+        seg_clean = re.sub(' +', ' ', segment).strip()
+
+        # split the segment by spaces and assign values
+        seg_split = seg_clean.split()
+        seg_dict['flight_number'] = seg_split[0]
+        seg_dict['departure_date'] = seg_split[1]
+        seg_dict['origin_destination'] = seg_split[2]
+        seg_dict['segment_status'] = seg_split[3]
+        seg_dict['departure_time'] = seg_split[4]
+        seg_dict['arrival_time'] = seg_split[5]
+        seg_dict['fare_ladder'] = seg_split[6]
+
+        # split up origin and destination
+        seg_dict['origin'] = seg_dict['origin_destination'][:3]
+        seg_dict['destination'] = seg_dict['origin_destination'][3:]
+
+        output['segments'].append(seg_dict)
+
+    return output
+
+
+@app.route('/price-check/<string:pnr>')
+def price_check(pnr):
     """Accepts a GET requests with a string
     of a PNR.
 
-    The idea here is to call the Java app's PNR
-    endpoint and fetch what it would fetch.
+    Fetch a list of lower prices based on the PNR.
 
     :param str pnr: Passenger Name Record
-    :return: The result from the Java app or
-        'PNR NOT FOUND'
+    :return: json
     """
-    # fetch the endpoint from the Java app
+    # fetch the pnrs endpoint from the Java app
     # quote_plus the passed in PNR for security
     r = get(
         'http://localhost:8080/pnrs/{}'.format(
             quote_plus(pnr)
         ))
+
+    json_return = {
+        'pnr': pnr, 'message': 'success'
+    }
 
     # check for errors
     # we could also return a different message
@@ -44,11 +90,19 @@ def pnrs(pnr):
     try:
         r.raise_for_status()
     except HTTPError:
-        return 'PNR NOT FOUND'
+        json_return['message'] = 'PNR NOT FOUND'
+        return jsonify(json_return)
     if r.status_code != 200:
-        return 'PNR NOT FOUND'
+        json_return['message'] = 'PNR NOT FOUND'
+        return jsonify(json_return)
+    if r.text == 'PNR NOT FOUND':
+        json_return['message'] = 'PNR NOT FOUND'
+        return jsonify(json_return)
 
-    return r.text
+    parsed_response = parse_flight_text(r.text)
+    print(parsed_response)
+
+    return jsonify(json_return)
 
 
 if __name__ == '__main__':

@@ -3,6 +3,7 @@ import requests
 from config import *
 import json
 from parse import parse_flight_text
+from app import compare_prices
 
 APP_PROTOCOL = 'http'
 APP_URL = 'localhost'
@@ -14,17 +15,41 @@ APP_ENDPOINT = (
 
 
 class TestApp(unittest.TestCase):
+    """Runs a few test cases."""
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
     def test_main_response(self):
+        # check that the ABC123 is successful
         r = requests.get(APP_ENDPOINT + 'price-check/ABC123')
 
         j = json.loads(r.text)
 
         assert j['message'] == 'success'
 
+    def test_price_compare(self):
+        # check that tickets with a higher price than the
+        # prices get added and returned
+        ticket = {
+            'classOfService': 'BUSINESS',
+            'price': {'amount': 2500}
+        }
+        prices = [
+            {'classOfService': 'BUSINESS',
+                'price': {'amount': 2600}},
+            {'classOfService': 'ECONOMY',
+                'price': {'amount': 240}},
+            {'classOfService': 'BUSINESS',
+                'price': {'amount': 2400}},
+            {'classOfService': 'BUSINESS',
+                'price': {'amount': 2300}}
+        ]
+        compare = compare_prices(ticket, prices)
+        assert len(compare) == 2
+
     def test_parsing(self):
+        # this should have 3 segments parsed out
         s = """
               RECLOC: ABC123
               FLIGHTS:
@@ -37,6 +62,8 @@ class TestApp(unittest.TestCase):
 
         assert len(parsed['segments']) == 3
 
+        # This should only have 2 segments parsed out because of the regex
+        # It's not expecting numbers to precede flight segments
         s = """
               RECLOC: ABC123
               FLIGHTS:
@@ -49,6 +76,7 @@ class TestApp(unittest.TestCase):
 
         assert len(parsed['segments']) == 2
 
+        # this should error because there's no text
         try:
             parse_flight_text('')
         except Exception:

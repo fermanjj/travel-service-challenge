@@ -145,8 +145,13 @@ def price_check(pnr):
     print(clean_price_response)
 
     # do the price compare
-    lower_prices = compare_prices(
-        clean_tickets_response, clean_price_response)
+    try:
+        lower_prices = compare_prices(
+            clean_tickets_response, clean_price_response)
+    except Exception:
+        LOGGER.exception("Error on price compare")
+        json_return['message'] = 'error on price compare'
+        return jsonify(json_return)
     json_return['lower_prices'] = lower_prices
 
     return jsonify(json_return)

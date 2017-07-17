@@ -14,7 +14,6 @@ from flask import (
 )
 from config import *
 import requests
-from requests import HTTPError
 from urllib.parse import quote_plus
 from parse import parse_flight_text
 import logging
@@ -31,7 +30,8 @@ LOGGER = logging.getLogger(__name__)
 LOGGER.setLevel(logging.DEBUG)
 ch = logging.StreamHandler(sys.stdout)
 ch.setLevel(logging.DEBUG)
-formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+formatter = logging.Formatter(
+    '%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 ch.setFormatter(formatter)
 LOGGER.addHandler(ch)
 
@@ -46,14 +46,28 @@ def check_request_errors(r):
     try:
         r.raise_for_status()
         if r.status_code != 200:
-            raise HTTPError
-    except HTTPError:
+            raise requests.HTTPError
+    except requests.HTTPError:
+        LOGGER.exception("Error on request")
         return False
     return True
 
 
 def compare_prices(ticket, prices):
-    pass
+    """This function does the price compare
+    based on the class of service. If the amount
+    is lower, then it gets added to the output list.
+
+    :param dict ticket: The ticket response from the Java endpoint
+    :param list prices: The price response from the Java endpoint
+    :return: A list of lower prices, if any
+    """
+    out = []
+    for price in prices:
+        if ticket['classOfService'] == price['classOfService']:
+            if ticket['price']['amount'] > price['price']['amount']:
+                out.append(price)
+    return out
 
 
 @app.route('/price-check/<string:pnr>')
@@ -107,8 +121,9 @@ def price_check(pnr):
         json_return['message'] = 'error on tickets request'
         return jsonify(json_return)
     clean_tickets_response = json.loads(tickets_response.text)
+    print(clean_tickets_response)
 
-    # get the prices based on the pnr parsed repsonse
+    # get the prices based on the pnr parsed response
     # build the post request
     price_post_data = []
     for x in parsed_pnr_response['segments']:
@@ -129,7 +144,10 @@ def price_check(pnr):
     clean_price_response = json.loads(price_response.text)
     print(clean_price_response)
 
-    compare_prices(clean_tickets_response, clean_price_response)
+    # do the price compare
+    lower_prices = compare_prices(
+        clean_tickets_response, clean_price_response)
+    json_return['lower_prices'] = lower_prices
 
     return jsonify(json_return)
 

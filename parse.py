@@ -12,7 +12,7 @@ def parse_flight_text(data):
         r'[1-9][0-9]*\. AS ([0-9]{13})', data).group(1)
 
     # parse the flight segments using regex
-    segments = re.findall(r'[a-z]\.(.*)$', data)
+    segments = re.findall(r'[a-z]\.(.*)(?:\n|$)', data)
 
     # create an output dict
     output = {'ticket_number': ticket_number, 'segments': []}

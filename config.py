@@ -10,5 +10,5 @@ JAVA_PORT = 8080
 
 JAVA_ENDPOINT = (
     JAVA_PROTOCOL + '://' +
-    JAVA_URL + str(JAVA_PORT) + '/'
+    JAVA_URL + ':' + str(JAVA_PORT) + '/'
 )

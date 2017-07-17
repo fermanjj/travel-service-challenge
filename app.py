@@ -13,54 +13,47 @@ from flask import (
     Flask, jsonify
 )
 from config import *
-from requests import get, HTTPError
+import requests
+from requests import HTTPError
 from urllib.parse import quote_plus
-import re
+from parse import parse_flight_text
+import logging
+import sys
+import json
 
 
 app = Flask(__name__)
 app.secret_key = APP_SECRET
 
+# set up a logger to log to stdout
+logging.basicConfig()
+LOGGER = logging.getLogger(__name__)
+LOGGER.setLevel(logging.DEBUG)
+ch = logging.StreamHandler(sys.stdout)
+ch.setLevel(logging.DEBUG)
+formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+ch.setFormatter(formatter)
+LOGGER.addHandler(ch)
 
-def parse_flight_text(data):
-    """Parses the text from the pnrs endpoint.
 
-    :param str data: The payload from the Java pnrs request
-    :return: A dict of the flight data parsed out.
+def check_request_errors(r):
+    """A func to check for errors on a given
+    request and
+
+    :param r: A request response object
+    :return: boolean
     """
-    # parse the ticket number using regex
-    ticket_number = re.search(
-        r'[1-9][0-9]*\. AS ([0-9]{13})', data).group(1)
+    try:
+        r.raise_for_status()
+        if r.status_code != 200:
+            raise HTTPError
+    except HTTPError:
+        return False
+    return True
 
-    # parse the flight segments using regex
-    segments = re.findall(r'[a-z]\.(.*)$', data)
 
-    # create an output dict
-    output = {'ticket_number': ticket_number, 'segments': []}
-
-    # iterate over the segments, parsing them
-    for segment in segments:
-        seg_dict = {}
-        # clean the segment to just have single spaces
-        seg_clean = re.sub(' +', ' ', segment).strip()
-
-        # split the segment by spaces and assign values
-        seg_split = seg_clean.split()
-        seg_dict['flight_number'] = seg_split[0]
-        seg_dict['departure_date'] = seg_split[1]
-        seg_dict['origin_destination'] = seg_split[2]
-        seg_dict['segment_status'] = seg_split[3]
-        seg_dict['departure_time'] = seg_split[4]
-        seg_dict['arrival_time'] = seg_split[5]
-        seg_dict['fare_ladder'] = seg_split[6]
-
-        # split up origin and destination
-        seg_dict['origin'] = seg_dict['origin_destination'][:3]
-        seg_dict['destination'] = seg_dict['origin_destination'][3:]
-
-        output['segments'].append(seg_dict)
-
-    return output
+def compare_prices(ticket, prices):
+    pass
 
 
 @app.route('/price-check/<string:pnr>')
@@ -75,8 +68,8 @@ def price_check(pnr):
     """
     # fetch the pnrs endpoint from the Java app
     # quote_plus the passed in PNR for security
-    r = get(
-        'http://localhost:8080/pnrs/{}'.format(
+    pnr_response = requests.get(
+        JAVA_ENDPOINT + 'pnrs/{}'.format(
             quote_plus(pnr)
         ))
 
@@ -87,20 +80,56 @@ def price_check(pnr):
     # check for errors
     # we could also return a different message
     # for errors
-    try:
-        r.raise_for_status()
-    except HTTPError:
-        json_return['message'] = 'PNR NOT FOUND'
+    if not check_request_errors(pnr_response):
+        json_return['message'] = 'error on pnr request'
         return jsonify(json_return)
-    if r.status_code != 200:
-        json_return['message'] = 'PNR NOT FOUND'
-        return jsonify(json_return)
-    if r.text == 'PNR NOT FOUND':
+
+    if pnr_response.text == 'PNR NOT FOUND':
         json_return['message'] = 'PNR NOT FOUND'
         return jsonify(json_return)
 
-    parsed_response = parse_flight_text(r.text)
-    print(parsed_response)
+    # parse the response
+    try:
+        parsed_pnr_response = parse_flight_text(pnr_response.text)
+    except Exception:
+        LOGGER.exception('Error on parsing PNR response')
+        json_return['message'] = 'invalid PNR parse'
+        return jsonify(json_return)
+    print(parsed_pnr_response)
+
+    # get the ticket data from the java endpoint
+    tickets_response = requests.get(
+        JAVA_ENDPOINT + 'tickets/{}'.format(
+            parsed_pnr_response['ticket_number']
+        ))
+    # check for errors
+    if not check_request_errors(tickets_response):
+        json_return['message'] = 'error on tickets request'
+        return jsonify(json_return)
+    clean_tickets_response = json.loads(tickets_response.text)
+
+    # get the prices based on the pnr parsed repsonse
+    # build the post request
+    price_post_data = []
+    for x in parsed_pnr_response['segments']:
+        price_post_data.append({
+            'departureDate': x['departure_date'],
+            'flightNumber': x['flight_number'],
+            'origin': x['origin'],
+            'destination': x['destination']
+        })
+
+    price_response = requests.post(
+        JAVA_ENDPOINT + 'price', json=price_post_data
+    )
+    # check for errors
+    if not check_request_errors(price_response):
+        json_return['message'] = 'error on price request'
+        return jsonify(json_return)
+    clean_price_response = json.loads(price_response.text)
+    print(clean_price_response)
+
+    compare_prices(clean_tickets_response, clean_price_response)
 
     return jsonify(json_return)
 

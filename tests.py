@@ -28,6 +28,13 @@ class TestApp(unittest.TestCase):
 
         assert j['message'] == 'success'
 
+        # check that test gives the correct response
+        r = requests.get(APP_ENDPOINT + 'price-check/test')
+
+        j = json.loads(r.text)
+
+        assert j['message'] == 'PNR NOT FOUND'
+
     def test_price_compare(self):
         # check that tickets with a higher price than the
         # prices get added and returned
@@ -48,6 +55,8 @@ class TestApp(unittest.TestCase):
         compare = compare_prices(ticket, prices)
         assert len(compare) == 2
 
+        # check that tickets with no higher price return
+        # an empty list
         compare2 = compare_prices(ticket, prices[:-2])
         assert len(compare2) == 0
 

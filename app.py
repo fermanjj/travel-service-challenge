@@ -109,7 +109,6 @@ def price_check(pnr):
         LOGGER.exception('Error on parsing PNR response')
         json_return['message'] = 'invalid PNR parse'
         return jsonify(json_return)
-    print(parsed_pnr_response)
 
     # get the ticket data from the java endpoint
     tickets_response = requests.get(
@@ -121,7 +120,6 @@ def price_check(pnr):
         json_return['message'] = 'error on tickets request'
         return jsonify(json_return)
     clean_tickets_response = json.loads(tickets_response.text)
-    print(clean_tickets_response)
 
     # get the prices based on the pnr parsed response
     # build the post request
@@ -142,7 +140,6 @@ def price_check(pnr):
         json_return['message'] = 'error on price request'
         return jsonify(json_return)
     clean_price_response = json.loads(price_response.text)
-    print(clean_price_response)
 
     # do the price compare
     try:

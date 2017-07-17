@@ -25,6 +25,8 @@ def parse_flight_text(data):
 
         # split the segment by spaces and assign values
         seg_split = seg_clean.split()
+        if len(seg_split) != 8:
+            raise Exception('Incorrect amount of segment fields.')
         seg_dict['flight_number'] = seg_split[0]
         seg_dict['departure_date'] = seg_split[1]
         seg_dict['origin_destination'] = seg_split[2]

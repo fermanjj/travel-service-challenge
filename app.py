@@ -90,6 +90,7 @@ def price_check(pnr):
         parsed_pnr_response = parse_flight_text(pnr_response.text)
     except Exception:
         LOGGER.exception('Error on parsing PNR response')
+        LOGGER.debug('PNR response text: %s', pnr_response.text)
         json_return['message'] = 'invalid PNR parse'
         return jsonify(json_return)
 
@@ -135,6 +136,8 @@ def price_check(pnr):
             ticket_response_json, price_response_json)
     except Exception:
         LOGGER.exception("Error on price compare")
+        LOGGER.debug("ticket_json: %s\nprice_json: %s",
+                     (ticket_response_json, price_response_json))
         json_return['message'] = 'error on price compare'
         return jsonify(json_return)
     json_return['lower_prices'] = lower_prices

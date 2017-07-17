@@ -48,6 +48,9 @@ class TestApp(unittest.TestCase):
         compare = compare_prices(ticket, prices)
         assert len(compare) == 2
 
+        compare2 = compare_prices(ticket, prices[:-2])
+        assert len(compare2) == 0
+
     def test_parsing(self):
         # this should have 3 segments parsed out
         s = """

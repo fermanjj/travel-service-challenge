@@ -36,23 +36,6 @@ ch.setFormatter(formatter)
 LOGGER.addHandler(ch)
 
 
-def check_request_errors(r):
-    """A func to check for errors on a given
-    request and
-
-    :param r: A request response object
-    :return: boolean
-    """
-    try:
-        r.raise_for_status()
-        if r.status_code != 200:
-            raise requests.HTTPError
-    except requests.HTTPError:
-        LOGGER.exception("Error on request")
-        return False
-    return True
-
-
 def compare_prices(ticket, prices):
     """This function does the price compare
     based on the class of service. If the amount
@@ -80,21 +63,21 @@ def price_check(pnr):
     :param str pnr: Passenger Name Record
     :return: json
     """
-    # fetch the pnrs endpoint from the Java app
-    # quote_plus the passed in PNR for security
-    pnr_response = requests.get(
-        JAVA_ENDPOINT + 'pnrs/{}'.format(
-            quote_plus(pnr)
-        ))
-
     json_return = {
         'pnr': pnr, 'message': 'success'
     }
 
-    # check for errors
-    # we could also return a different message
-    # for errors
-    if not check_request_errors(pnr_response):
+    try:
+        # fetch the pnrs endpoint from the Java app
+        # quote_plus the passed in PNR for security
+        pnr_response = requests.get(
+            JAVA_ENDPOINT + 'pnrs/{}'.format(
+                quote_plus(pnr)
+            ))
+        if pnr_response.status_code != 200:
+            raise requests.exceptions.RequestException
+    except requests.exceptions.RequestException:
+        LOGGER.exception('Request exception')
         json_return['message'] = 'error on pnr request'
         return jsonify(json_return)
 
@@ -110,19 +93,20 @@ def price_check(pnr):
         json_return['message'] = 'invalid PNR parse'
         return jsonify(json_return)
 
-    # get the ticket data from the java endpoint
-    tickets_response = requests.get(
-        JAVA_ENDPOINT + 'tickets/{}'.format(
-            parsed_pnr_response['ticket_number']
-        ))
-    # check for errors
-    if not check_request_errors(tickets_response):
+    try:
+        # get the ticket data from the java endpoint
+        tickets_response = requests.get(
+            JAVA_ENDPOINT + 'tickets/{}'.format(
+                parsed_pnr_response['ticket_number']
+            ))
+        if tickets_response.status_code != 200:
+            raise requests.exceptions.RequestException
+    except requests.exceptions.RequestException:
         json_return['message'] = 'error on tickets request'
         return jsonify(json_return)
-    clean_tickets_response = json.loads(tickets_response.text)
+    ticket_response_json = json.loads(tickets_response.text)
 
-    # get the prices based on the pnr parsed response
-    # build the post request
+    # build the post request for the pricing
     price_post_data = []
     for x in parsed_pnr_response['segments']:
         price_post_data.append({
@@ -132,19 +116,23 @@ def price_check(pnr):
             'destination': x['destination']
         })
 
-    price_response = requests.post(
-        JAVA_ENDPOINT + 'price', json=price_post_data
-    )
-    # check for errors
-    if not check_request_errors(price_response):
+    try:
+        # get the prices based on the pnr parsed response
+        price_response = requests.post(
+            JAVA_ENDPOINT + 'price', json=price_post_data
+        )
+        if price_response.status_code != 200:
+            raise requests.exceptions.RequestException
+    except requests.exceptions.RequestException:
         json_return['message'] = 'error on price request'
         return jsonify(json_return)
-    clean_price_response = json.loads(price_response.text)
+
+    price_response_json = json.loads(price_response.text)
 
     # do the price compare
     try:
         lower_prices = compare_prices(
-            clean_tickets_response, clean_price_response)
+            ticket_response_json, price_response_json)
     except Exception:
         LOGGER.exception("Error on price compare")
         json_return['message'] = 'error on price compare'
